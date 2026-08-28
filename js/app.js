@@ -37,13 +37,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
-  // CONNECT TO ESP32 AUTOMATICALLY
-  Device.connect(
-    updateDeviceStatus,
-    (msg) => {
-      document.getElementById('debug-log').innerText = msg;
-    }
-  );
+  // BLE CONNECT BUTTON
+  document
+    .getElementById('connect-device-btn')
+    .addEventListener('click', async () => {
+
+      await Device.connect(
+        updateDeviceStatus,
+        (msg) => {
+          document.getElementById('debug-log').innerText = msg;
+        }
+      );
+    });
+
 
 
   // GPS
