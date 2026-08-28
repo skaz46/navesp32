@@ -52,13 +52,14 @@
       </section>
 
       <section class="panel-section">
-        <h2>DEVICE SETTINGS (WS)</h2>
-        <div class="ip-config">
-          <input type="text" id="esp-ip-input" placeholder="192.168.x.x:81" />
-          <button id="save-ip-btn">Save</button>
-          <button id="test-conn-btn">Connect</button>
+        <h2>DEVICE CONNECTION</h2>
+
+        <div class="destination-preview">
+          <label>ESP32 STATUS</label>
+          <p id="debug-log" class="log-text">
+            Connecting to device...
+          </p>
         </div>
-        <p id="debug-log" class="log-text">Status: Idle</p>
       </section>
     </main>
   </div>
