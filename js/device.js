@@ -1,68 +1,87 @@
 const Device = {
-  ws: null,
+  device: null,
+  server: null,
+  service: null,
+  characteristic: null,
   connected: false,
-  reconnectTimer: null,
 
-  connect(onStatusChange, onLog) {
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.OPEN ||
-        this.ws.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
+  SERVICE_UUID: "12345678-1234-1234-1234-1234567890ab",
+  CHARACTERISTIC_UUID: "abcdefab-1234-1234-1234-abcdefabcdef",
 
-    const url = `ws://${window.location.hostname}:81`;
-
-    onLog(`Connecting to ESP32...`);
-
+  async connect(onStatusChange, onLog) {
     try {
-      this.ws = new WebSocket(url);
+      onLog("Searching for ESP32...");
 
-      this.ws.onopen = () => {
-        this.connected = true;
-        onStatusChange(true);
-        onLog('ESP32 CONNECTED');
-      };
+      this.device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { name: "ESP32 NAV" }
+        ],
+        optionalServices: [this.SERVICE_UUID]
+      });
 
-      this.ws.onmessage = (event) => {
-        console.log('ESP32:', event.data);
-      };
+      this.device.addEventListener(
+        "gattserverdisconnected",
+        () => {
+          this.connected = false;
+          onStatusChange(false);
+          onLog("ESP32 DISCONNECTED");
+        }
+      );
 
-      this.ws.onclose = () => {
-        this.connected = false;
-        onStatusChange(false);
-        onLog('ESP32 DISCONNECTED');
+      onLog("Connecting...");
 
-        clearTimeout(this.reconnectTimer);
+      this.server =
+        await this.device.gatt.connect();
 
-        this.reconnectTimer = setTimeout(() => {
-          this.connect(onStatusChange, onLog);
-        }, 3000);
-      };
+      this.service =
+        await this.server.getPrimaryService(
+          this.SERVICE_UUID
+        );
 
-      this.ws.onerror = () => {
-        onLog('WebSocket connection failed');
-      };
+      this.characteristic =
+        await this.service.getCharacteristic(
+          this.CHARACTERISTIC_UUID
+        );
 
-    } catch (e) {
+      this.connected = true;
+
+      onStatusChange(true);
+      onLog("ESP32 CONNECTED");
+
+    } catch (error) {
+      console.error(error);
+
       this.connected = false;
       onStatusChange(false);
-      onLog(`Connection error: ${e.message}`);
+
+      onLog("Connection failed: " + error.message);
     }
   },
 
-  send(data) {
+  async send(data) {
     if (
-      this.ws &&
-      this.ws.readyState === WebSocket.OPEN
+      !this.connected ||
+      !this.characteristic
     ) {
-      this.ws.send(JSON.stringify(data));
-      console.log('Sent:', data);
-      return true;
+      console.log("ESP32 not connected");
+      return false;
     }
 
-    console.log('ESP32 not connected');
-    return false;
+    try {
+      const json = JSON.stringify(data);
+      const encoder = new TextEncoder();
+
+      await this.characteristic.writeValue(
+        encoder.encode(json)
+      );
+
+      console.log("BLE SENT:", json);
+
+      return true;
+
+    } catch (error) {
+      console.error("BLE send error:", error);
+      return false;
+    }
   }
 };
