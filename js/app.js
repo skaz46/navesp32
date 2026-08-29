@@ -15,6 +15,18 @@ const state = {
   }
 };
 
+let phoneHeading = null;
+
+function startCompass() {
+  window.addEventListener('deviceorientation', (event) => {
+    if (typeof event.webkitCompassHeading === 'number') {
+      phoneHeading = event.webkitCompassHeading;
+    } else if (event.alpha !== null) {
+      phoneHeading = (360 - event.alpha) % 360;
+    }
+  }, true);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
   // MAP
