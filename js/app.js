@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lat: data.lat,
             lon: data.lon,
             accuracy: data.accuracy,
-            heading: data.heading ?? null,
+            heading: phoneHeading,
             speed: data.speed ?? null,
             timestamp: Date.now()
           }
