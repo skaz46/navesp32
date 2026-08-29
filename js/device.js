@@ -1,52 +1,23 @@
 const Device = {
-  device: null,
-  server: null,
-  service: null,
-  characteristic: null,
   connected: false,
 
-  SERVICE_UUID: "12345678-1234-1234-1234-1234567890ab",
-  CHARACTERISTIC_UUID: "abcdefab-1234-1234-1234-abcdefabcdef",
+  DATABASE_URL: 'https://navesp32-15a05-default-rtdb.firebaseio.com',
 
   async connect(onStatusChange, onLog) {
     try {
-      onLog("Searching for ESP32...");
+      onLog('Connecting to Firebase...');
 
-      this.device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { name: "ESP32 NAV" }
-        ],
-        optionalServices: [this.SERVICE_UUID]
-      });
-
-      this.device.addEventListener(
-        "gattserverdisconnected",
-        () => {
-          this.connected = false;
-          onStatusChange(false);
-          onLog("ESP32 DISCONNECTED");
-        }
+      const response = await fetch(
+        `${this.DATABASE_URL}/nav.json`
       );
 
-      onLog("Connecting...");
-
-      this.server =
-        await this.device.gatt.connect();
-
-      this.service =
-        await this.server.getPrimaryService(
-          this.SERVICE_UUID
-        );
-
-      this.characteristic =
-        await this.service.getCharacteristic(
-          this.CHARACTERISTIC_UUID
-        );
+      if (!response.ok) {
+        throw new Error(`Firebase HTTP ${response.status}`);
+      }
 
       this.connected = true;
-
       onStatusChange(true);
-      onLog("ESP32 CONNECTED");
+      onLog('CLOUD LINK READY');
 
     } catch (error) {
       console.error(error);
@@ -54,33 +25,33 @@ const Device = {
       this.connected = false;
       onStatusChange(false);
 
-      onLog("Connection failed: " + error.message);
+      onLog(`Connection failed: ${error.message}`);
     }
   },
 
   async send(data) {
-    if (
-      !this.connected ||
-      !this.characteristic
-    ) {
-      console.log("ESP32 not connected");
-      return false;
-    }
-
     try {
-      const json = JSON.stringify(data);
-      const encoder = new TextEncoder();
-
-      await this.characteristic.writeValue(
-        encoder.encode(json)
+      const response = await fetch(
+        `${this.DATABASE_URL}/nav.json`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        }
       );
 
-      console.log("BLE SENT:", json);
+      if (!response.ok) {
+        throw new Error(`Firebase HTTP ${response.status}`);
+      }
+
+      console.log('FIREBASE SENT:', data);
 
       return true;
 
     } catch (error) {
-      console.error("BLE send error:", error);
+      console.error('Firebase send error:', error);
       return false;
     }
   }
