@@ -106,20 +106,41 @@ document.addEventListener('DOMContentLoaded', () => {
   );
 
 
-  // CONNECT CLOUD BUTTON
+  // CONNECT CLOUD + START COMPASS
   document
     .getElementById('test-conn-btn')
-    .addEventListener('click', () => {
-
-      Device.connect(
-        updateDeviceStatus,
-        (msg) => {
-          document.getElementById('debug-log').innerText = msg;
+    .addEventListener('click', async () => {
+  
+      try {
+  
+        if (
+          typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function'
+        ) {
+          const permission =
+            await DeviceOrientationEvent.requestPermission(true);
+  
+          if (permission !== 'granted') {
+            throw new Error('Compass permission denied');
+          }
         }
-      );
-
+  
+        startCompass();
+  
+        await Device.connect(
+          updateDeviceStatus,
+          (msg) => {
+            document.getElementById('debug-log').innerText = msg;
+          }
+        );
+  
+      } catch (error) {
+  
+        document.getElementById('debug-log').innerText =
+          `Compass/Cloud error: ${error.message}`;
+      }
+  
     });
-
 
   // SEARCH
   document
