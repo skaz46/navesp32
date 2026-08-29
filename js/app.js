@@ -21,41 +21,27 @@ document.addEventListener('DOMContentLoaded', () => {
   MapController.init((lat, lon) => {
 
     state.destination = {
-      type: 'destination',
-      lat: parseFloat(lat.toFixed(6)),
-      lon: parseFloat(lon.toFixed(6)),
-      label: 'Selected Map Location'
+      destination: {
+        lat: parseFloat(lat.toFixed(6)),
+        lon: parseFloat(lon.toFixed(6)),
+        label: 'Selected Map Location'
+      }
     };
 
     MapController.setDestination(
       lat,
       lon,
-      state.destination.label
+      state.destination.destination.label
     );
 
     updateUI();
   });
 
 
-  // BLE CONNECT BUTTON
-  document
-    .getElementById('connect-device-btn')
-    .addEventListener('click', async () => {
-
-      await Device.connect(
-        updateDeviceStatus,
-        (msg) => {
-          document.getElementById('debug-log').innerText = msg;
-        }
-      );
-    });
-
-
-
   // GPS
   GPS.start(
 
-    (data) => {
+    async (data) => {
 
       state.gps = {
         ...state.gps,
@@ -63,11 +49,13 @@ document.addEventListener('DOMContentLoaded', () => {
         active: true
       };
 
-      const gpsTag =
-        document.getElementById('gps-status-indicator');
+      document
+        .getElementById('gps-status-indicator')
+        .className = 'status-tag on';
 
-      gpsTag.className = 'status-tag on';
-      gpsTag.innerText = 'GPS ● ACTIVE';
+      document
+        .getElementById('gps-status-indicator')
+        .innerText = 'GPS ● ACTIVE';
 
       MapController.updateUserPosition(
         data.lat,
@@ -77,106 +65,89 @@ document.addEventListener('DOMContentLoaded', () => {
       updateUI();
 
 
-      // SEND GPS ONCE PER SECOND
-      if (GPS.shouldSend() && Device.connected) {
+      // SEND GPS TO FIREBASE ONCE PER SECOND
+      if (GPS.shouldSend()) {
 
-        Device.send({
-          type: 'gps',
-          lat: data.lat,
-          lon: data.lon,
-          accuracy: data.accuracy,
-          ...(data.heading !== undefined
-            ? { heading: data.heading }
-            : {}),
-          ...(data.speed !== undefined
-            ? { speed: data.speed }
-            : {})
+        const success = await Device.send({
+          gps: {
+            lat: data.lat,
+            lon: data.lon,
+            accuracy: data.accuracy,
+            heading: data.heading ?? null,
+            speed: data.speed ?? null,
+            timestamp: Date.now()
+          }
         });
+
+        if (!success) {
+          document.getElementById('debug-log').innerText =
+            'GPS upload failed';
+        }
       }
     },
 
-
     (err) => {
-
-      const gpsTag =
-        document.getElementById('gps-status-indicator');
-
-      gpsTag.className = 'status-tag off';
-      gpsTag.innerText = 'GPS ● ERROR';
-
       document.getElementById('debug-log').innerText =
         `GPS Error: ${err}`;
     }
+
   );
 
 
-  // DESTINATION SEARCH
+  // CONNECT CLOUD BUTTON
+  document
+    .getElementById('test-conn-btn')
+    .addEventListener('click', () => {
+
+      Device.connect(
+        updateDeviceStatus,
+        (msg) => {
+          document.getElementById('debug-log').innerText = msg;
+        }
+      );
+
+    });
+
+
+  // SEARCH
   document
     .getElementById('search-btn')
     .addEventListener('click', performSearch);
 
 
-  // ALLOW ENTER TO SEARCH
-  document
-    .getElementById('search-input')
-    .addEventListener('keydown', (e) => {
-
-      if (e.key === 'Enter') {
-        performSearch();
-      }
-    });
-
-
   // SEND DESTINATION
   document
     .getElementById('send-btn')
-    .addEventListener('click', () => {
+    .addEventListener('click', async () => {
 
       if (!state.destination) {
-
-        document.getElementById('debug-log').innerText =
-          'Select a destination first.';
-
         return;
       }
 
-      if (!Device.connected) {
+      const success = await Device.send(
+        state.destination
+      );
 
+      if (success) {
         document.getElementById('debug-log').innerText =
-          'ESP32 is not connected.';
-
-        return;
+          'Destination sent to ESP32 cloud link.';
+      } else {
+        document.getElementById('debug-log').innerText =
+          'Destination upload failed.';
       }
 
-
-      const packet = {
-        type: 'destination',
-        lat: state.destination.lat,
-        lon: state.destination.lon,
-        label: state.destination.label
-      };
-
-
-      if (Device.send(packet)) {
-
-        document.getElementById('debug-log').innerText =
-          'Destination sent to ESP32.';
-      }
     });
 
 
   // SERVICE WORKER
   if ('serviceWorker' in navigator) {
-
-    navigator.serviceWorker
-      .register('./service-worker.js')
-      .catch(err => console.log(
-        'Service worker error:',
-        err
-      ));
+    navigator.serviceWorker.register(
+      './service-worker.js'
+    );
   }
 
 });
+
 
 
 function updateDeviceStatus(isConnected) {
@@ -184,23 +155,24 @@ function updateDeviceStatus(isConnected) {
   state.esp32.connected = isConnected;
 
   const tag =
-    document.getElementById('device-status-indicator');
-
+    document.getElementById(
+      'device-status-indicator'
+    );
 
   if (isConnected) {
 
     tag.className = 'status-tag on';
-    tag.innerText = 'DEVICE ● CONNECTED';
+    tag.innerText = 'CLOUD ● READY';
 
   } else {
 
     tag.className = 'status-tag off';
-    tag.innerText = 'DEVICE ● DISCONNECTED';
+    tag.innerText = 'CLOUD ● OFFLINE';
   }
-
 
   updateUI();
 }
+
 
 
 function updateUI() {
@@ -217,7 +189,7 @@ function updateUI() {
 
   document.getElementById('val-acc').innerText =
     state.gps.accuracy !== null
-      ? `${Math.round(state.gps.accuracy)} m`
+      ? `${Math.round(state.gps.accuracy)}m`
       : '--';
 
   document.getElementById('val-spd').innerText =
@@ -233,28 +205,26 @@ function updateUI() {
 
   if (state.destination) {
 
-    document.getElementById('target-name').innerText =
-      state.destination.label;
+    const dest =
+      state.destination.destination;
 
-    sendBtn.disabled =
-      !state.esp32.connected;
+    document.getElementById('target-name').innerText =
+      `${dest.label} (${dest.lat}, ${dest.lon})`;
+
+    sendBtn.disabled = false;
 
   } else {
-
-    document.getElementById('target-name').innerText =
-      'None selected';
 
     sendBtn.disabled = true;
   }
 }
 
 
+
 async function performSearch() {
 
   const query =
-    document.getElementById('search-input')
-      .value
-      .trim();
+    document.getElementById('search-input').value;
 
   if (!query) return;
 
@@ -262,33 +232,23 @@ async function performSearch() {
   const resList =
     document.getElementById('search-results');
 
-  resList.innerHTML =
-    '<li>Searching...</li>';
-
+  resList.innerHTML = '<li>Searching...</li>';
   resList.classList.remove('hidden');
 
 
   try {
 
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`
     );
 
-    const data = await res.json();
+    const data =
+      await response.json();
 
     resList.innerHTML = '';
 
 
-    if (!data.length) {
-
-      resList.innerHTML =
-        '<li>No locations found</li>';
-
-      return;
-    }
-
-
-    data.forEach((item) => {
+    data.slice(0, 5).forEach((item) => {
 
       const li =
         document.createElement('li');
@@ -307,39 +267,37 @@ async function performSearch() {
 
 
         state.destination = {
-          type: 'destination',
-          lat: parseFloat(lat.toFixed(6)),
-          lon: parseFloat(lon.toFixed(6)),
-          label:
-            item.display_name.split(',')[0]
+          destination: {
+            lat: lat,
+            lon: lon,
+            label:
+              item.display_name
+                .split(',')[0]
+          }
         };
 
 
         MapController.setDestination(
           lat,
           lon,
-          state.destination.label
-        );
-
-
-        MapController.map.setView(
-          [lat, lon],
-          15
+          state.destination.destination.label
         );
 
 
         resList.classList.add('hidden');
 
         updateUI();
+
       });
 
 
       resList.appendChild(li);
+
     });
 
-  } catch (err) {
+  } catch (error) {
 
-    console.error(err);
+    console.error(error);
 
     resList.innerHTML =
       '<li>Error finding locations</li>';
